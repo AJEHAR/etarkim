@@ -291,6 +291,7 @@
                 <button onclick="switchAdminTab('edit-passages')" id="btn-tab-passages" class="px-4 py-2 font-bold text-sm border-b-2 border-transparent text-slate-500">Tahap 3</button>
                 <button onclick="switchAdminTab('edit-quiz')" id="btn-tab-quiz"     class="px-4 py-2 font-bold text-sm border-b-2 border-transparent text-slate-500">Kuiz</button>
                 <button onclick="switchAdminTab('media')"     id="btn-tab-media"    class="px-4 py-2 font-bold text-sm border-b-2 border-transparent text-slate-500">Media</button>
+                <button onclick="switchAdminTab('security')" id="btn-tab-security" class="px-4 py-2 font-bold text-sm border-b-2 border-transparent text-slate-500">Keselamatan</button>
             </div>
             <div class="bg-white rounded-2xl p-6 shadow-md flex-grow overflow-y-auto max-h-[450px]">
 
@@ -350,6 +351,38 @@
                         <div class="border p-4 rounded bg-slate-50"><span class="text-xs font-bold mb-2 block">Video YouTube</span><input type="text" id="media-url-video" placeholder="URL YouTube" onchange="saveVideoLink(this.value)" class="w-full border p-2 text-sm rounded mt-6 focus:border-brand-mint outline-none"></div>
                     </div>
                     <button onclick="resetMediaDefaults()" class="w-full bg-red-500 hover:bg-red-600 text-white text-sm py-3 rounded-xl font-bold shadow">Padam Semua Media (Kembali ke Infografik Asal)</button>
+                </div>
+
+                <!-- TAB KESELAMATAN -->
+                <div id="admin-tab-security" class="hidden space-y-5">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center text-amber-600 text-lg"><i class="fa-solid fa-shield-halved"></i></div>
+                        <div><h3 class="font-bold text-slate-800">Keselamatan Akaun Pentadbir</h3><p class="text-xs text-slate-400">Kata laluan disimpan dalam Google Sheets (tab Media)</p></div>
+                    </div>
+                    <div class="bg-slate-50 border border-slate-200 rounded-2xl p-6 space-y-4">
+                        <h4 class="font-bold text-slate-700 flex items-center gap-2"><i class="fa-solid fa-key text-brand-mint"></i> Tukar Kata Laluan</h4>
+                        <div class="space-y-3 max-w-sm">
+                            <div>
+                                <label class="text-xs font-bold text-slate-500 uppercase block mb-1">Kata Laluan Semasa</label>
+                                <input type="password" id="admin-current-pw" placeholder="Masukkan kata laluan semasa" class="w-full px-4 py-3 rounded-xl border-2 border-slate-200 focus:border-brand-mint outline-none font-bold text-sm">
+                            </div>
+                            <div>
+                                <label class="text-xs font-bold text-slate-500 uppercase block mb-1">Kata Laluan Baru</label>
+                                <input type="password" id="admin-new-pw" placeholder="Sekurang-kurangnya 6 aksara" class="w-full px-4 py-3 rounded-xl border-2 border-slate-200 focus:border-brand-mint outline-none font-bold text-sm">
+                            </div>
+                            <div>
+                                <label class="text-xs font-bold text-slate-500 uppercase block mb-1">Sahkan Kata Laluan Baru</label>
+                                <input type="password" id="admin-confirm-pw" placeholder="Taip semula kata laluan baru" class="w-full px-4 py-3 rounded-xl border-2 border-slate-200 focus:border-brand-mint outline-none font-bold text-sm">
+                            </div>
+                            <button onclick="changeAdminPassword()" class="w-full py-3 bg-brand-mint text-white font-bold rounded-xl hover:bg-emerald-600 shadow-lg bounce-btn flex items-center justify-center gap-2">
+                                <i class="fa-solid fa-floppy-disk"></i> Simpan Kata Laluan Baru ke Sheets
+                            </button>
+                        </div>
+                    </div>
+                    <div class="bg-blue-50 border border-blue-200 rounded-2xl p-4">
+                        <p class="font-bold text-blue-700 text-sm mb-2"><i class="fa-solid fa-circle-info"></i> Jika terlupa kata laluan</p>
+                        <p class="text-xs text-blue-600">Buka Google Sheets → tab <strong>Media</strong> → cari baris <strong>adminPassword</strong> → edit nilai terus dalam sel. Kata laluan lalai semasa setup: <strong>cikgu123</strong></p>
+                    </div>
                 </div>
 
             </div>
@@ -655,12 +688,45 @@ function quitMarioGame() { stopMoving(); Swal.fire({title:'Berhenti?',icon:'warn
 
 // ── ADMIN CMS ─────────────────────────────────────────────────
 let adminChart=null, activeQuizEditorIndex=0, adminTmpAnswers=[];
-function showAdminView() { Swal.fire({title:'Kata Laluan Pentadbir',input:'password',inputAttributes:{autocomplete:'current-password'},showCancelButton:true,confirmButtonText:'Masuk'}).then(r=>{ if(r.isConfirmed&&r.value==='cikgu123'){ showScreen('section-admin'); switchAdminTab('scores'); Swal.fire({title:'Selamat Datang, Cikgu!',icon:'success',timer:1500,showConfirmButton:false}); } else if(r.isConfirmed){ Swal.fire('Kata laluan salah','','error'); } }); }
+function showAdminView() {
+    Swal.fire({
+        title: 'Kata Laluan Pentadbir',
+        input: 'password',
+        inputAttributes: { autocomplete: 'current-password' },
+        showCancelButton: true,
+        confirmButtonText: 'Masuk',
+        showLoaderOnConfirm: true,
+        preConfirm: async (inputPw) => {
+            // Fetch kata laluan terkini dari Sheets
+            let correctPw = mediaDatabase.adminPassword;
+            if(!correctPw) {
+                const initData = await apiCall('getInitData');
+                if(initData && initData.media) {
+                    Object.assign(mediaDatabase, initData.media);
+                    correctPw = mediaDatabase.adminPassword;
+                }
+            }
+            correctPw = correctPw || 'cikgu123'; // fallback jika Sheets gagal
+            if(inputPw !== correctPw) {
+                Swal.showValidationMessage('Kata laluan salah. Cuba lagi.');
+                return false;
+            }
+            return true;
+        },
+        allowOutsideClick: () => !Swal.isLoading()
+    }).then(r => {
+        if(r.isConfirmed && r.value === true) {
+            showScreen('section-admin');
+            switchAdminTab('scores');
+            Swal.fire({ title:'Selamat Datang, Cikgu!', icon:'success', timer:1500, showConfirmButton:false });
+        }
+    });
+}
 function exitAdminView() { showScreen('screen-login'); }
 function switchAdminTab(tab) {
-    ['admin-tab-scores','admin-tab-analytics','admin-tab-words','admin-tab-passages','admin-tab-quiz','admin-tab-media'].forEach(id=>document.getElementById(id).classList.add('hidden'));
-    ['scores','analytics','words','passages','quiz','media'].forEach(t=>{ const btn=document.getElementById('btn-tab-'+t); if(btn) btn.className='px-4 py-2 font-bold text-sm border-b-2 border-transparent text-slate-500 hover:text-brand-mint'; });
-    const contentMap = {'scores':'scores','analytics':'analytics','edit-words':'words','edit-passages':'passages','edit-quiz':'quiz','media':'media'};
+    ['admin-tab-scores','admin-tab-analytics','admin-tab-words','admin-tab-passages','admin-tab-quiz','admin-tab-media','admin-tab-security'].forEach(id=>document.getElementById(id).classList.add('hidden'));
+    ['scores','analytics','words','passages','quiz','media','security'].forEach(t=>{ const btn=document.getElementById('btn-tab-'+t); if(btn) btn.className='px-4 py-2 font-bold text-sm border-b-2 border-transparent text-slate-500 hover:text-brand-mint'; });
+    const contentMap = {'scores':'scores','analytics':'analytics','edit-words':'words','edit-passages':'passages','edit-quiz':'quiz','media':'media','security':'security'};
     const btnKey = contentMap[tab]||tab;
     const contentId = 'admin-tab-'+(tab.replace('edit-',''));
     const el=document.getElementById(contentId); if(el) el.classList.remove('hidden');
@@ -671,6 +737,7 @@ function switchAdminTab(tab) {
     else if(tab==='edit-passages') loadPassageToEditor();
     else if(tab==='edit-quiz')  loadQuizEditorQuestionsList();
     else if(tab==='media')      loadAdminMediaFields();
+    // 'security' tiada load function — UI statik sahaja
 }
 async function loadAdminScoresTable() {
     const b=document.getElementById('table-scores-body');
@@ -706,7 +773,40 @@ function loadAdminMediaFields() { ['nota1','nota2','teknik1'].forEach(k=>{ const
 function handleMediaFileUpload(inputId,dbKey) { const input=document.getElementById(inputId); if(!input.files||!input.files[0]) return; const reader=new FileReader(); reader.onload=e=>{ mediaDatabase[dbKey]=e.target.result; applyMediaSettings(); Swal.fire({icon:'info',title:'Imej dimuatkan!',text:'Nota: Imej hanya wujud dalam sesi ini. Untuk kekal, gunakan URL.',timer:4000,showConfirmButton:false}); }; reader.readAsDataURL(input.files[0]); }
 async function saveMediaUrl(dbKey,val) { if(!val) return; mediaDatabase[dbKey]=val; await apiCall('updateMedia',{key:dbKey,value:val}); applyMediaSettings(); Swal.fire('Berjaya','URL disimpan ke Sheets!','success'); }
 async function saveVideoLink(val) { if(!val) return; mediaDatabase.videoUrl=val; await apiCall('updateMedia',{key:'videoUrl',value:val}); applyMediaSettings(); Swal.fire('Berjaya','Video dikemaskini dalam Sheets!','success'); }
-async function resetMediaDefaults() { const r=await Swal.fire({title:'Reset semua media?',icon:'warning',showCancelButton:true,confirmButtonColor:'#EF4444'}); if(!r.isConfirmed) return; const def={nota1:'interactive_template',nota2:'interactive_template',teknik1:'interactive_template',videoUrl:'https://www.youtube.com/embed/dQw4w9WgXcQ'}; mediaDatabase=Object.assign({},def); for(const [k,v] of Object.entries(def)) await apiCall('updateMedia',{key:k,value:v}); applyMediaSettings(); Swal.fire('Selesai','Media dikembalikan ke asal.','success'); }
+async function resetMediaDefaults() { const r=await Swal.fire({title:'Reset semua media?',icon:'warning',showCancelButton:true,confirmButtonColor:'#EF4444'}); if(!r.isConfirmed) return; const def={nota1:'interactive_template',nota2:'interactive_template',teknik1:'interactive_template',videoUrl:'https://www.youtube.com/embed/dQw4w9WgXcQ'}; mediaDatabase=Object.assign({},mediaDatabase,def); for(const [k,v] of Object.entries(def)) await apiCall('updateMedia',{key:k,value:v}); applyMediaSettings(); Swal.fire('Selesai','Media dikembalikan ke asal.','success'); }
+
+async function changeAdminPassword() {
+    const currentPw  = document.getElementById('admin-current-pw').value;
+    const newPw      = document.getElementById('admin-new-pw').value;
+    const confirmPw  = document.getElementById('admin-confirm-pw').value;
+
+    // Semak kata laluan semasa
+    const correctPw = mediaDatabase.adminPassword || 'cikgu123';
+    if(currentPw !== correctPw) {
+        return Swal.fire('Ralat', 'Kata laluan semasa tidak betul.', 'error');
+    }
+    // Semak panjang kata laluan baru
+    if(!newPw || newPw.length < 6) {
+        return Swal.fire('Ralat', 'Kata laluan baru mestilah sekurang-kurangnya 6 aksara.', 'error');
+    }
+    // Semak pengesahan
+    if(newPw !== confirmPw) {
+        return Swal.fire('Ralat', 'Pengesahan kata laluan tidak sepadan.', 'error');
+    }
+
+    Swal.fire({ title:'Menyimpan...', allowOutsideClick:false, showConfirmButton:false, didOpen:()=>Swal.showLoading() });
+
+    // ★ Simpan ke Google Sheets
+    await apiCall('updateMedia', { key:'adminPassword', value:newPw });
+    mediaDatabase.adminPassword = newPw; // Kemaskini dalam memori
+
+    // Kosongkan borang
+    ['admin-current-pw','admin-new-pw','admin-confirm-pw'].forEach(id => {
+        document.getElementById(id).value = '';
+    });
+
+    Swal.fire('Berjaya!', 'Kata laluan pentadbir telah ditukar dan disimpan ke Sheets.', 'success');
+}
 
 </script>
 </body>
