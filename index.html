@@ -381,7 +381,7 @@
                     </div>
                     <div class="bg-blue-50 border border-blue-200 rounded-2xl p-4">
                         <p class="font-bold text-blue-700 text-sm mb-2"><i class="fa-solid fa-circle-info"></i> Jika terlupa kata laluan</p>
-                        <p class="text-xs text-blue-600">Buka Google Sheets → tab <strong>Media</strong> → cari baris <strong>adminPassword</strong> → edit nilai terus dalam sel. Kata laluan lalai semasa setup: <strong>cikgu123</strong></p>
+                        <p class="text-xs text-blue-600">Buka Google Sheets → tab <strong>Media</strong> → cari baris <strong>adminPassword</strong> → <strong>padam nilai dalam sel</strong> (kosongkan). Kemudian klik butang Pentadbir dalam app — sistem akan minta anda cipta kata laluan baru.</p>
                     </div>
                 </div>
 
@@ -688,25 +688,60 @@ function quitMarioGame() { stopMoving(); Swal.fire({title:'Berhenti?',icon:'warn
 
 // ── ADMIN CMS ─────────────────────────────────────────────────
 let adminChart=null, activeQuizEditorIndex=0, adminTmpAnswers=[];
-function showAdminView() {
-    Swal.fire({
+async function showAdminView() {
+    // Langkah 1: Fetch kata laluan dari Sheets
+    Swal.fire({ title:'Menyambung...', allowOutsideClick:false, showConfirmButton:false, didOpen:()=>Swal.showLoading() });
+
+    let correctPw = mediaDatabase.adminPassword;
+    if(!correctPw) {
+        const initData = await apiCall('getInitData');
+        if(initData && initData.media) {
+            Object.assign(mediaDatabase, initData.media);
+            correctPw = mediaDatabase.adminPassword;
+        }
+    }
+    Swal.close();
+
+    // Langkah 2: Jika tiada kata laluan dalam Sheets → First Time Setup
+    if(!correctPw) {
+        const setup = await Swal.fire({
+            title: 'Tetapan Pertama Kali',
+            html: '<p class="text-sm text-slate-500 mb-4">Tiada kata laluan pentadbir dijumpai dalam sistem.<br>Sila cipta kata laluan baru untuk meneruskan.</p>' +
+                  '<input id="swal-pw1" type="password" placeholder="Kata laluan baru (min. 6 aksara)" class="swal2-input">' +
+                  '<input id="swal-pw2" type="password" placeholder="Sahkan kata laluan" class="swal2-input">',
+            icon: 'info',
+            confirmButtonText: 'Tetapkan Kata Laluan',
+            showCancelButton: true,
+            focusConfirm: false,
+            preConfirm: () => {
+                const pw1 = document.getElementById('swal-pw1').value;
+                const pw2 = document.getElementById('swal-pw2').value;
+                if(!pw1 || pw1.length < 6) { Swal.showValidationMessage('Kata laluan mestilah sekurang-kurangnya 6 aksara'); return false; }
+                if(pw1 !== pw2) { Swal.showValidationMessage('Kata laluan tidak sepadan'); return false; }
+                return pw1;
+            }
+        });
+
+        if(!setup.isConfirmed) return;
+
+        // Simpan kata laluan pertama ke Sheets
+        Swal.fire({ title:'Menyimpan...', allowOutsideClick:false, showConfirmButton:false, didOpen:()=>Swal.showLoading() });
+        await apiCall('updateMedia', { key:'adminPassword', value:setup.value });
+        mediaDatabase.adminPassword = setup.value;
+        Swal.close();
+        Swal.fire({ title:'Kata Laluan Ditetapkan!', text:'Sila log masuk dengan kata laluan baru anda.', icon:'success', timer:2000, showConfirmButton:false });
+        return; // Keluar — biar cikgu log masuk semula
+    }
+
+    // Langkah 3: Tanya kata laluan — bandingkan dengan Sheets
+    const result = await Swal.fire({
         title: 'Kata Laluan Pentadbir',
         input: 'password',
-        inputAttributes: { autocomplete: 'current-password' },
+        inputAttributes: { autocomplete: 'current-password', placeholder:'Masukkan kata laluan' },
         showCancelButton: true,
         confirmButtonText: 'Masuk',
         showLoaderOnConfirm: true,
-        preConfirm: async (inputPw) => {
-            // Fetch kata laluan terkini dari Sheets
-            let correctPw = mediaDatabase.adminPassword;
-            if(!correctPw) {
-                const initData = await apiCall('getInitData');
-                if(initData && initData.media) {
-                    Object.assign(mediaDatabase, initData.media);
-                    correctPw = mediaDatabase.adminPassword;
-                }
-            }
-            correctPw = correctPw || 'cikgu123'; // fallback jika Sheets gagal
+        preConfirm: (inputPw) => {
             if(inputPw !== correctPw) {
                 Swal.showValidationMessage('Kata laluan salah. Cuba lagi.');
                 return false;
@@ -714,13 +749,13 @@ function showAdminView() {
             return true;
         },
         allowOutsideClick: () => !Swal.isLoading()
-    }).then(r => {
-        if(r.isConfirmed && r.value === true) {
-            showScreen('section-admin');
-            switchAdminTab('scores');
-            Swal.fire({ title:'Selamat Datang, Cikgu!', icon:'success', timer:1500, showConfirmButton:false });
-        }
     });
+
+    if(result.isConfirmed && result.value === true) {
+        showScreen('section-admin');
+        switchAdminTab('scores');
+        Swal.fire({ title:'Selamat Datang, Cikgu!', icon:'success', timer:1500, showConfirmButton:false });
+    }
 }
 function exitAdminView() { showScreen('screen-login'); }
 function switchAdminTab(tab) {
@@ -780,8 +815,11 @@ async function changeAdminPassword() {
     const newPw      = document.getElementById('admin-new-pw').value;
     const confirmPw  = document.getElementById('admin-confirm-pw').value;
 
-    // Semak kata laluan semasa
-    const correctPw = mediaDatabase.adminPassword || 'cikgu123';
+    // Semak kata laluan semasa (jika sampai sini, admin sudah log masuk — adminPassword pasti ada)
+    const correctPw = mediaDatabase.adminPassword;
+    if(!correctPw) {
+        return Swal.fire('Ralat', 'Sesi tidak sah. Sila log masuk semula.', 'error');
+    }
     if(currentPw !== correctPw) {
         return Swal.fire('Ralat', 'Kata laluan semasa tidak betul.', 'error');
     }
